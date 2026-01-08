@@ -42,7 +42,7 @@ const PREFIX = "!";
 const WEBHOOK_URL = process.env.WEBHOOK;
 const webhook = WEBHOOK_URL ? new WebhookClient({ url: WEBHOOK_URL }) : null;
 const KEY_PREFIX = "VORAHUB";
-const SCRIPT_URL = "https://raw.githubusercontent.com/Andrazx23/vorahub/refs/heads/main/keysystem.lua";
+const SCRIPT_URL = "https://raw.githubusercontent.com/Zxcp98/zx/refs/heads/main/loader.lua";
 const PREMIUM_ROLE_ID = "1434842978932752405";
 const STAFF_ROLE_ID = "1452500424551567360";
 const WHITELIST_SCRIPT_LINK = "https://discord.com/channels/1434540370284384338/1434755316808941718/1452153375260020888";
@@ -57,25 +57,30 @@ function generateKey() {
 }
 
 // Helper: dapatkan key aktif user dari cache atau Firestore
-async function getUserActiveKeys(userId) {
+// Helper: dapatkan key aktif user dari cache atau Firestore
+async function getUserActiveKeys(userId, discordTag) {
     const cached = userKeyCache.get(userId);
     if (cached && cached.expires > Date.now()) {
         return cached.keys;
     }
 
-    const snapshot = await db.collection('keys')
-        .where('userId', '==', userId)
-        .get();
+    const [snapshotId, snapshotTag] = await Promise.all([
+        db.collection('keys').where('userId', '==', userId).get(),
+        db.collection('keys').where('usedByDiscord', '==', discordTag).get()
+    ]);
 
-    const keys = [];
-    snapshot.forEach(doc => keys.push(doc.id));
+    const keys = new Set();
+    snapshotId.forEach(doc => keys.add(doc.id));
+    snapshotTag.forEach(doc => keys.add(doc.id));
+
+    const result = Array.from(keys);
 
     userKeyCache.set(userId, {
-        keys,
+        keys: result,
         expires: Date.now() + 120000 // 2 menit
     });
 
-    return keys;
+    return result;
 }
 
 // Log action (tetap sama, tapi lebih ringkas)
@@ -339,7 +344,7 @@ client.on('interactionCreate', async (interaction) => {
             if (interaction.customId === "getrole_start") {
                 await interaction.deferReply({ ephemeral: true });
                 if (!interaction.guild) return interaction.editReply({ content: "Fitur ini hanya bisa dipakai di server." });
-                const keys = await getUserActiveKeys(userId);
+                const keys = await getUserActiveKeys(userId, discordTag);
                 if (keys.length === 0) return interaction.editReply({ content: "Kamu belum punya key aktif!" });
 
                 const member = await interaction.guild.members.fetch(userId).catch(() => null);
@@ -356,7 +361,7 @@ client.on('interactionCreate', async (interaction) => {
             // Get Script
             if (interaction.customId === "getscript_start") {
                 await interaction.deferReply({ ephemeral: true });
-                const keys = await getUserActiveKeys(userId);
+                const keys = await getUserActiveKeys(userId, discordTag);
                 if (keys.length === 0) return interaction.editReply({ content: "Kamu belum punya key aktif!" });
 
                 if (keys.length === 1) {
@@ -390,7 +395,7 @@ client.on('interactionCreate', async (interaction) => {
             // Reset HWID
             if (interaction.customId === "reset_start") {
                 await interaction.deferReply({ ephemeral: true });
-                const keys = await getUserActiveKeys(userId);
+                const keys = await getUserActiveKeys(userId, discordTag);
                 if (keys.length === 0) return interaction.editReply({ content: "Kamu belum punya key aktif!" });
 
                 if (keys.length === 1) {
