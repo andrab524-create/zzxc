@@ -261,12 +261,49 @@ client.on('interactionCreate', async (interaction) => {
             if (sub === 'remove') {
                 const targetUser = interaction.options.getUser('user');
                 const targetTag = targetUser.tag;
-                const doc = await db.collection('whitelist').doc(targetUser.id).get();
-                if (!doc.exists) return interaction.editReply({ content: `${targetTag} tidak di whitelist!` });
+                const userId = targetUser.id;
 
+                // Check by User ID first
+                let doc = await db.collection('whitelist').doc(userId).get();
+
+                // If not found by User ID, search by discordTag (for legacy entries)
+                if (!doc.exists) {
+                    const snapshot = await db.collection('whitelist')
+                        .where('discordTag', '==', targetTag)
+                        .limit(1)
+                        .get();
+
+                    if (!snapshot.empty) {
+                        doc = snapshot.docs[0];
+                        // Found by tag, now delete it
+                        await doc.ref.delete();
+                        await logAction("WHITELIST REMOVE", interaction.user.tag, targetTag, "Remove (by tag)", `Old ID: ${doc.id}`);
+                        return interaction.editReply({ content: `✅ Berhasil hapus ${targetTag} dari whitelist (ditemukan via username).` });
+                    }
+
+                    // Still not found, search by userId field
+                    const snapshotById = await db.collection('whitelist')
+                        .where('userId', '==', userId)
+                        .limit(1)
+                        .get();
+
+                    if (!snapshotById.empty) {
+                        doc = snapshotById.docs[0];
+                        await doc.ref.delete();
+                        await logAction("WHITELIST REMOVE", interaction.user.tag, targetTag, "Remove (by userId field)");
+                        return interaction.editReply({ content: `✅ Berhasil hapus ${targetTag} dari whitelist.` });
+                    }
+
+                    // Truly not found
+                    return interaction.editReply({
+                        content: `❌ ${targetTag} (ID: ${userId}) tidak ditemukan di whitelist!\n\nGunakan \`/whitelist search ${targetTag}\` untuk mencari atau \`/whitelist list\` untuk melihat semua.`
+                    });
+                }
+
+                // Found by User ID, delete normally
                 await doc.ref.delete();
                 await logAction("WHITELIST REMOVE", interaction.user.tag, targetTag, "Remove");
-                return interaction.editReply({ content: `Berhasil hapus ${targetTag} dari whitelist.` });
+                return interaction.editReply({ content: `✅ Berhasil hapus ${targetTag} dari whitelist.` });
             }
 
             if (sub === 'bulkremove') {
