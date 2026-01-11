@@ -220,11 +220,27 @@ client.once('ready', async () => {
                 .setName('user')
                 .setDescription('User yang keynya akan dihapus')
                 .setRequired(true)
+            ),
+        new SlashCommandBuilder()
+            .setName('sethwidlimit')
+            .setDescription('Atur HWID limit untuk key user')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+            .addUserOption(opt => opt
+                .setName('user')
+                .setDescription('User yang akan diatur HWID limitnya')
+                .setRequired(true)
+            )
+            .addIntegerOption(opt => opt
+                .setName('limit')
+                .setDescription('Jumlah device yang bisa pakai key ini (1-10)')
+                .setRequired(true)
+                .setMinValue(1)
+                .setMaxValue(10)
             )
     ];
 
     await client.application.commands.set(commands);
-    console.log("Slash commands registered! well");
+    console.log("Slash commands registered!");
 });
 
 // =============== SATU INTERACTION HANDLER SAJA (lebih cepat) ===============
@@ -256,6 +272,7 @@ client.on('interactionCreate', async (interaction) => {
                     alreadyRedeem: true,
                     userId: targetUser.id,
                     hwid: "",
+                    hwidLimit: 1,
                     usedAt: admin.firestore.FieldValue.serverTimestamp(),
                     expiresAt: null,
                     createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -552,6 +569,41 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.editReply({ content: `✅ Berhasil hapus ${userKeys.length} key dari ${targetTag} + role dihapus.` });
         }
 
+        // Slash Command: /sethwidlimit
+        if (interaction.isChatInputCommand() && interaction.commandName === 'sethwidlimit') {
+            if (!interaction.member.roles.cache.has(STAFF_ROLE_ID)) {
+                return interaction.reply({ content: "Hanya staff dengan role khusus!", ephemeral: true });
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+
+            const targetUser = interaction.options.getUser('user');
+            const targetTag = targetUser.tag;
+            const newLimit = interaction.options.getInteger('limit');
+
+            // Get all user's keys
+            const userKeys = await getUserActiveKeys(targetUser.id, targetTag);
+
+            if (userKeys.length === 0) {
+                return interaction.editReply({ content: `${targetTag} tidak memiliki key aktif!` });
+            }
+
+            const batch = db.batch();
+
+            // Update hwidLimit for all user's keys
+            for (const key of userKeys) {
+                batch.update(db.collection('keys').doc(key), { hwidLimit: newLimit });
+            }
+
+            await batch.commit();
+
+            // Invalidate cache
+            userKeyCache.delete(targetUser.id);
+
+            await logAction("HWID LIMIT UPDATED", interaction.user.tag, targetTag, "Set HWID Limit", `New limit: ${newLimit}, Keys affected: ${userKeys.length}`);
+            return interaction.editReply({ content: `✅ HWID limit untuk **${userKeys.length}** key milik ${targetTag} telah diubah menjadi **${newLimit}** device.` });
+        }
+
         // Button / Modal / Select Menu
         if (interaction.isButton() || interaction.isModalSubmit() || interaction.isStringSelectMenu()) {
             const userId = interaction.user.id;
@@ -610,6 +662,7 @@ client.on('interactionCreate', async (interaction) => {
                     alreadyRedeem: true,
                     userId: userId,
                     hwid: "",
+                    hwidLimit: 1,
                     usedAt: admin.firestore.FieldValue.serverTimestamp(),
                     expiresAt: isPermanent ? null : admin.firestore.Timestamp.fromMillis(Date.now() + (pendingData.expiresInDays * 86400000)),
                     createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -693,10 +746,54 @@ client.on('interactionCreate', async (interaction) => {
                 if (keys.length === 0) return interaction.editReply({ content: "Kamu belum punya key aktif!" });
 
                 if (keys.length === 1) {
+                    // Langsung reset jika hanya 1 key
                     await db.collection('keys').doc(keys[0]).update({ hwid: "", used: false });
                     await logAction("HWID RESET", discordTag, keys[0], "Reset HWID");
                     return interaction.editReply({ content: `HWID untuk key \`${keys[0]}\` telah direset.` });
                 }
+
+                // Jika lebih dari 1 key, tanyakan reset semua atau pilih satu
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId("reset_all_confirm")
+                        .setLabel("Reset Semua HWID")
+                        .setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder()
+                        .setCustomId("reset_choose_key")
+                        .setLabel("Pilih Key Tertentu")
+                        .setStyle(ButtonStyle.Primary)
+                );
+
+                return interaction.editReply({
+                    content: `Kamu punya **${keys.length}** key aktif.\nMau reset HWID semua key atau pilih satu?`,
+                    components: [row]
+                });
+            }
+
+            // Reset semua HWID
+            if (interaction.customId === "reset_all_confirm") {
+                await interaction.deferReply({ ephemeral: true });
+                const keys = await getUserActiveKeys(userId, discordTag);
+                if (keys.length === 0) return interaction.editReply({ content: "Kamu belum punya key aktif!" });
+
+                const batch = db.batch();
+                for (const key of keys) {
+                    batch.update(db.collection('keys').doc(key), { hwid: "", used: false });
+                }
+                await batch.commit();
+
+                await logAction("HWID RESET ALL", discordTag, `${keys.length} keys`, "Reset All HWID");
+                return interaction.editReply({
+                    content: `✅ HWID untuk **${keys.length}** key telah direset semua!`,
+                    components: []
+                });
+            }
+
+            // Pilih key tertentu untuk reset
+            if (interaction.customId === "reset_choose_key") {
+                await interaction.deferReply({ ephemeral: true });
+                const keys = await getUserActiveKeys(userId, discordTag);
+                if (keys.length === 0) return interaction.editReply({ content: "Kamu belum punya key aktif!" });
 
                 const select = new StringSelectMenuBuilder()
                     .setCustomId("reset_select_key")
@@ -714,7 +811,7 @@ client.on('interactionCreate', async (interaction) => {
                 const key = interaction.values[0];
                 await db.collection('keys').doc(key).update({ hwid: "", used: false });
                 await logAction("HWID RESET", discordTag, key, "Reset HWID (Select)");
-                return interaction.editReply({ content: `HWID untuk key \`${key}\` telah direset.`, components: [] });
+                return interaction.editReply({ content: `✅ HWID untuk key \`${key}\` telah direset.`, components: [] });
             }
         }
     } catch (error) {
@@ -834,5 +931,3 @@ if (!process.env.TOKEN) {
     client.login(process.env.TOKEN).catch(err => console.error('Login error:', err));
 
 }
-
-
