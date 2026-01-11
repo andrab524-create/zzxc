@@ -232,15 +232,15 @@ client.once('ready', async () => {
             )
             .addIntegerOption(opt => opt
                 .setName('limit')
-                .setDescription('Jumlah device yang bisa pakai key ini (1-10)')
+                .setDescription('Jumlah device yang bisa pakai key ini')
                 .setRequired(true)
                 .setMinValue(1)
-                .setMaxValue(10)
+                .setMaxValue(100000000)
             )
     ];
 
     await client.application.commands.set(commands);
-    console.log("Slash commands REGIS!");
+    console.log("Slash commands X!");
 });
 
 // =============== SATU INTERACTION HANDLER SAJA (lebih cepat) ===============
@@ -931,4 +931,3 @@ if (!process.env.TOKEN) {
     client.login(process.env.TOKEN).catch(err => console.error('Login error:', err));
 
 }
-
