@@ -32,7 +32,7 @@ const KEY_PREFIX = "VORAHUB";
 const SCRIPT_URL = "https://vorahub.xyz/loader";
 const PREMIUM_ROLE_ID = process.env.PREMIUM_ROLE_ID || "1434842978932752405";
 const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID || "1452500424551567360";
-const WHITELIST_SCRIPT_LINK = "https://discord.com/channels/1434540370284384338/1434755316808941718/1452153375260020888";
+const WHITELIST_SCRIPT_LINK = "https://discord.com/channels/1434540370284384338/1434755316808941718/1463912895501959374";
 
 // Cache configuration - OPTIMIZED untuk 10,000++ users
 const CACHE_DURATION = 300000; // 5 menit
@@ -2040,3 +2040,4 @@ if (!process.env.TOKEN) {
             process.exit(1);
         });
 }
+
