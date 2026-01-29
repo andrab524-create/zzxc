@@ -5626,14 +5626,18 @@ function V5_spamLoop()
         
         V5_PlayFishingAnimationOptimized("reel")
         
-        -- NO DELAY (INSTANT COMPLETE)
+        -- Wait (Simulate V2 CompleteDelay but minimal)
+        task.wait(0.00001) 
+        
         V5_safeFire(function()
             V5_RE_FishingCompleted:FireServer()
         end)
         
         V5_PlayFishingAnimationOptimized("finish")
 
-        -- NO DELAY (INSTANT CANCEL)
+        -- Wait (Simulate V2 CancelDelay)
+        task.wait(0.0001)
+        
         V5_safeFire(function()
             V5_RF_CancelFishingInputs:InvokeServer()
         end)
