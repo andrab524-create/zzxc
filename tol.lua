@@ -3147,7 +3147,7 @@ local Window = VoraLib:CreateWindow({
 
 Window:Notify({
     Title = "Vora Hub",
-    Content = "UI Successfully Loaded!",
+    Content = "UI Successfully Loaded! TOL",
     Duration = 5,
 })
 
@@ -4937,7 +4937,7 @@ function StartCast()
     end)
 end
 
-local function MainLoop()
+ function MainLoop()
     while Config.blantant do
         StartCast()
         task.wait(Config.cancel)
